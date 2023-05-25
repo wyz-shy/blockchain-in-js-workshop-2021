@@ -1,43 +1,93 @@
 import UTXOPool from './UTXOPool.js'
 
-Blockchain
 class Blockchain {
-  // 1. 完成构造函数及其参数
-  /* 构造函数需要包含
-      - 名字
-      - 创世区块
-      - 存储区块的映射
-  */
-  constructor() {}
+  // 实现构造函数及其参数
+  constructor(name, genesis) {
+    this.name = name
+    this.genesis = genesis
+    this.blocks = {}
+    this.utxoPool = new UTXOPool()
+  }
 
-  // 2. 定义 longestChain 函数
-  /*
-    返回当前链中最长的区块信息列表
-  */
+  // 实现longestChain方法
   longestChain() {
-    return []
+    let currentBlock = this.maxHeightBlock()
+    const longestChain = [currentBlock]
+    while (currentBlock.previousHash) {
+      currentBlock = this.blocks[currentBlock.previousHash]
+      longestChain.unshift(currentBlock)
+    }
+    return longestChain
   }
 
-  // 判断当前区块链是否包含
+  // 实现containsBlock方法
   containsBlock(block) {
-    // 添加判断方法
-    return false
+    return Boolean(this.blocks[block.hash])
   }
 
-  // 获得区块高度最高的区块
+  // 实现maxHeightBlock方法
   maxHeightBlock() {
-    // return Block
+    let maxHeightBlock = this.genesis
+    for (const hash in this.blocks) {
+      const block = this.blocks[hash]
+      if (block.height > maxHeightBlock.height) {
+        maxHeightBlock = block
+      }
+    }
+    return maxHeightBlock
   }
 
-  // 添加区块
-  /*
-
-  */
+  // 实现_addBlock内部方法
   _addBlock(block) {
-    if (!block.isValid()) return
-    if (this.containsBlock(block)) return
+    if (!block.isValid()) {
+        return
+    }
+    if (this.containsBlock(block)) {
+        return
+    }
 
+    const txs = block.transactions
     // 添加 UTXO 快照与更新的相关逻辑
+    const snapshot = this.utxoPool.clone()
+
+    for (let i = 0; i < txs.length; i++) {
+      const tx = txs[i]
+      const txHash = tx.computeHash()
+      // 验证当前交易是否是矿工的奖励交易
+      const isCoinbase = tx.inputs.length === 0
+      // 记录输入与输出
+      const consumedUTXOs = []
+      for (let j = 0; j < tx.inputs.length; j++) {
+        const input = tx.inputs[j]
+        const utxo = snapshot.getTxOutput(input.prevTxHash, input.outputIndex)
+        if (!utxo) {
+          throw new Error('Unable to find UTXO')
+        }
+        if (isCoinbase) {
+          // 矿工奖励交易
+          consumedUTXOs.push(utxo)
+        } else {
+          // 普通交易
+          if (this.utxoPool.contains(utxo)) {
+            this.utxoPool.removeUTXO(utxo)
+            consumedUTXOs.push(utxo)
+          } else {
+            throw new Error('Invalid UTXO')
+          }
+        }
+      }
+
+      const createdUTXOs = []
+      for (let j = 0; j < tx.outputs.length; j++) {
+        const output = tx.outputs[j]
+        const utxo = new UTXO(txHash, j)
+        createdUTXOs.push(utxo)
+        this.utxoPool.addUTXO(utxo, output)
+      }
+    }
+
+    // 添加新的区块
+    this.blocks[block.hash] = block
   }
 }
 
