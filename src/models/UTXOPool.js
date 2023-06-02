@@ -1,21 +1,41 @@
 import UTXO from './UTXO.js'
 
 class UTXOPool {
-  constructor(utxos = {}) {}
+  constructor() {
+    this.utxos = {}
+  }
 
-  addUTXO(publicKey, amount) {}
+  addUTXO(utxo) {
+    this.utxos[utxo.pubKey] = utxo
+  }
 
-  clone() {}
+  removeUTXO(pubKey) {
+    delete this.utxos[pubKey]
+  }
 
-  // 处理交易函数
-  handleTransaction() {}
+  isValidTransaction(pubKey, amount) {
+    if (!this.utxos[pubKey] || this.utxos[pubKey].amount < amount) {
+      return false
+    }
+    return true
+  }
 
-  // 验证交易合法性
-  /**
-   * 验证余额
-   * 返回 bool 
-   */
-  isValidTransaction() {}
+  handleTransaction(trx) {
+    if (this.isValidTransaction(trx.sender, trx.amount)) {
+      const senderUTXO = this.utxos[trx.sender]
+      const receiverUTXO = this.utxos[trx.receiver]
+      const newSenderUTXOAmount = senderUTXO.amount - trx.amount
+      const newReceiverUTXOAmount = receiverUTXO
+        ? receiverUTXO.amount + trx.amount
+        : trx.amount
+      if (newSenderUTXOAmount > 0) {
+        this.utxos[trx.sender] = new UTXO(trx.sender, newSenderUTXOAmount)
+      } else {
+        this.removeUTXO(trx.sender)
+      }
+      this.utxos[trx.receiver] = new UTXO(trx.receiver, newReceiverUTXOAmount)
+    }
+  }
 }
 
 export default UTXOPool
