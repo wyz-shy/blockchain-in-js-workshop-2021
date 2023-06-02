@@ -1,93 +1,100 @@
+import Block, { DIFFICULTY } from './Block.js'
 import UTXOPool from './UTXOPool.js'
 
 class Blockchain {
-  // 实现构造函数及其参数
-  constructor(name, genesis) {
-    this.name = name
-    this.genesis = genesis
-    this.blocks = {}
-    this.utxoPool = new UTXOPool()
+  constructor(name) {
+    this.name = name // 区块链的名称
+    this.chain = [] // 所有区块的列表
+    this.genesis = null // 创世区块
+    this.utxoPool = new UTXOPool() // 区块链的UTXO池
   }
 
-  // 实现longestChain方法
-  longestChain() {
-    let currentBlock = this.maxHeightBlock()
-    const longestChain = [currentBlock]
-    while (currentBlock.previousHash) {
-      currentBlock = this.blocks[currentBlock.previousHash]
-      longestChain.unshift(currentBlock)
+  // 创建创世区块
+  createGenesisBlock() {
+    const genesisBlock = new Block(
+      this,
+      null,
+      0,
+      'Genesis Block',
+      'coinbaseAddress',
+    )
+    genesisBlock.utxoPool = this.utxoPool
+    genesisBlock.mineBlock()
+    this.genesis = genesisBlock
+    this.chain.push(genesisBlock)
+  }
+
+  // 向区块链中添加新的区块
+  addBlock(block) {
+    if (block.prevHash !== this.chain[this.chain.length - 1].hash) {
+      throw new Error(`Invalid block: incorrect prevHash`)
     }
-    return longestChain
-  }
-
-  // 实现containsBlock方法
-  containsBlock(block) {
-    return Boolean(this.blocks[block.hash])
-  }
-
-  // 实现maxHeightBlock方法
-  maxHeightBlock() {
-    let maxHeightBlock = this.genesis
-    for (const hash in this.blocks) {
-      const block = this.blocks[hash]
-      if (block.height > maxHeightBlock.height) {
-        maxHeightBlock = block
+    if (!block.isValid()) {
+      throw new Error(`Invalid block: ${block.hash}`)
+    }
+    // 更新UTXO池
+    for (const tx of block.body) {
+      for (const input of tx.inputs) {
+        this.utxoPool.removeUTXO(input.hash, input.index)
+      }
+      for (let i = 0; i < tx.outputs.length; i++) {
+        const output = tx.outputs[i]
+        this.utxoPool.addUTXO(tx.hash, i, output.amount, output.address)
       }
     }
-    return maxHeightBlock
+    this.chain.push(block)
+    console.log(`Block added to ${this.name}: ${block.hash}`)
   }
 
-  // 实现_addBlock内部方法
-  _addBlock(block) {
-    if (!block.isValid()) {
-        return
+  // 查找区块链中高度最大的链
+  longestChain() {
+    let longest = []
+    for (let i = 0; i < this.chain.length; i++) {
+      let chain = [this.chain[i]]
+      let block = this.chain[i]
+      while (block.prevHash !== null) {
+        block = this.getBlockByHash(block.prevHash)
+        chain.push(block)
+      }
+      if (chain.length > longest.length) {
+        longest = chain
+      }
     }
-    if (this.containsBlock(block)) {
-        return
+    return longest
+  }
+
+  // 获取指定哈希值的区块
+  getBlockByHash(hash) {
+    for (const block of this.chain) {
+      if (block.hash === hash) {
+        return block
+      }
     }
+    return null
+  }
 
-    const txs = block.transactions
-    // 添加 UTXO 快照与更新的相关逻辑
-    const snapshot = this.utxoPool.clone()
+  // 获取指定高度的区块
+  getBlockByHeight(height) {
+    for (const block of this.chain) {
+      if (block.height === height) {
+        return block
+      }
+    }
+    return null
+  }
 
-    for (let i = 0; i < txs.length; i++) {
-      const tx = txs[i]
-      const txHash = tx.computeHash()
-      // 验证当前交易是否是矿工的奖励交易
-      const isCoinbase = tx.inputs.length === 0
-      // 记录输入与输出
-      const consumedUTXOs = []
-      for (let j = 0; j < tx.inputs.length; j++) {
-        const input = tx.inputs[j]
-        const utxo = snapshot.getTxOutput(input.prevTxHash, input.outputIndex)
-        if (!utxo) {
-          throw new Error('Unable to find UTXO')
-        }
-        if (isCoinbase) {
-          // 矿工奖励交易
-          consumedUTXOs.push(utxo)
-        } else {
-          // 普通交易
-          if (this.utxoPool.contains(utxo)) {
-            this.utxoPool.removeUTXO(utxo)
-            consumedUTXOs.push(utxo)
-          } else {
-            throw new Error('Invalid UTXO')
+  // 判断区块链中是否已经使用过某个交易输入
+  isInputUsed(input) {
+    for (const block of this.chain) {
+      for (const tx of block.body) {
+        for (const inpt of tx.inputs) {
+          if (inpt.hash === input.hash && inpt.index === input.index) {
+            return true
           }
         }
       }
-
-      const createdUTXOs = []
-      for (let j = 0; j < tx.outputs.length; j++) {
-        const output = tx.outputs[j]
-        const utxo = new UTXO(txHash, j)
-        createdUTXOs.push(utxo)
-        this.utxoPool.addUTXO(utxo, output)
-      }
     }
-
-    // 添加新的区块
-    this.blocks[block.hash] = block
+    return false
   }
 }
 
