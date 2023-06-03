@@ -252,3 +252,291 @@ trie.delete("banana");
 console.log(trie.search("banana")); // false
 console.log(trie.search("apple")); // true
 console.log(trie.search("cat")); // true
+
+
+
+
+
+
+//MPT
+const keccak256 = require('keccak256')
+
+class MPT {
+  constructor() {
+    this.db = new Map()
+    this.rootValue = null
+  }
+
+  // 向 MPT 中添加或更新一个账户
+  setAccount(address, balance, data) {
+    // 1. 首先将账户地址转换为一个长度为 40 的 16 进制字符串
+    const hexAddress = address.toLowerCase().substr(2, 40)
+
+    // 2. 计算 hash 值，获取相应的节点
+    let node
+    if (this.rootValue === null) {
+      node = new LeafNode(hexAddress, balance, data)
+      this.rootValue = node.hash()
+      this.db.set(this.rootValue, node)
+    } else {
+      let currentNode = this.db.get(this.rootValue)
+      node = this._set(currentNode, hexAddress, balance, data)
+      this.rootValue = node.hash()
+    }
+
+    return this.rootValue
+  }
+
+  // 递归地向 MPT 中添加或更新一个账户
+  _set(node, hexAddress, balance, data) {
+    switch (node.type) {
+      case NodeType.EMPTY:
+        return new LeafNode(hexAddress, balance, data)
+      case NodeType.LEAF:
+        if (node.key === hexAddress) {
+          node.balance = balance
+          node.data = data
+        } else {
+          const newNode = new BranchNode(node.key, hexAddress)
+          newNode.setChild(node, node.hexKey())
+          return this._set(newNode, hexAddress, balance, data)
+        }
+        break
+      case NodeType.EXTENSION:
+        if (hexAddress.startsWith(node.key)) {
+          const updatedChild = this._set(node.getChild(node.hexKey()), hexAddress, balance, data)
+          node.setChild(updatedChild, node.hexKey())
+        } else {
+          const newNode = new BranchNode(node.key, hexAddress)
+          const newChild = new LeafNode(hexAddress, balance, data)
+          newNode.setChild(node, node.hexKey())
+          newNode.setChild(newChild, hexAddress.substr(node.key.length))
+          return newNode
+        }
+        break
+      case NodeType.BRANCH:
+        const nibble = hexAddress.substr(node.nibbleIndex, 1)
+        const hexKey = node.hexKeyForNibble(nibble)
+        const childNode = node.getChild(hexKey)
+
+        let updatedChild
+        if (childNode.type === NodeType.EMPTY) {
+          updatedChild = new LeafNode(hexAddress, balance, data)
+        } else {
+          updatedChild = this._set(childNode, hexAddress, balance, data)
+        }
+
+        return node.setChild(updatedChild, hexKey)
+    }
+
+    return node
+  }
+
+  // 根据地址获取指定账户的数据和余额信息
+  getAccount(address) {
+    const hexAddress = address.toLowerCase().substr(2, 40)
+    let currentNode = this.db.get(this.rootValue)
+
+    if (currentNode === undefined) {
+      return null
+    }
+
+    for (let i = 0; i < hexAddress.length; i += 2) {
+      const nibble = parseInt(hexAddress.substr(i, 2), 16)
+
+      switch (currentNode.type) {
+        case NodeType.EMPTY:
+          return null
+        case NodeType.LEAF:
+          return (currentNode.key === hexAddress) ? { balance: currentNode.balance, data: currentNode.data } : null
+        case NodeType.EXTENSION:
+          if (!hexAddress.startsWith(currentNode.key)) {
+            return null
+          }
+          currentNode = currentNode.getChild(currentNode.hexKey())
+          break
+        case NodeType.BRANCH:
+          currentNode = currentNode.getChild(currentNode.hexKeyForNibble(nibble))
+      }
+    }
+
+    return null
+  }
+
+  // 验证 MPT 是否正确
+  validate(rootValue) {
+    return this.rootValue === rootValue
+  }
+}
+
+// 节点类型
+const NodeType = {
+  EMPTY: 0,
+  LEAF: 1,
+  EXTENSION: 2,
+  BRANCH: 3
+}
+
+// 节点抽象类
+class Node {
+  constructor(type) {
+    this.type = type
+  }
+
+  // 计算节点的 hash 值
+  hash() {
+    return keccak256(this.toBuffer())
+  }
+
+  // 将节点转换为 Buffer 类型
+  toBuffer() {}
+
+  // 获取节点的 4 位 (nibble) 键值
+  nibble(key, index) {
+    const hexKey = key.substr(index, 2)
+    const nibbles = []
+    for (let i = 0; i < hexKey.length; i++) {
+      nibbles.push(parseInt(hexKey[i], 16))
+    }
+    return nibbles
+  }
+}
+
+// 叶子节点
+class LeafNode extends Node {
+  constructor(key, balance, data) {
+    super(NodeType.LEAF)
+    this.key = key
+    this.balance = balance
+    this.data = data
+  }
+
+  // 将节点转换为 Buffer 类型
+  toBuffer() {
+    const encodedKey = encodeNibbles(this.nibble(this.key, 0));
+    const encodedBalance = Buffer.from(this.balance.toString(16).padStart(64, '0'), 'hex')
+    const encodedData = Buffer.from(this.data, 'utf8')
+    const buffers = [Buffer.from([0xc0 + (encodedKey.length - 1)]), encodedKey, encodedBalance, encodedData]
+    return Buffer.concat(buffers)
+  }
+}
+
+/**
+ * 将 nibbles 编码为紧凑的 nibble 键
+ * @param {number[]} nibbles - nibble 数组
+ * @returns {Buffer} - 编码后的 nibble 键
+ */
+function encodeNibbles(nibbles) {
+  let flag = 2
+  let odd = false
+  if (nibbles.length % 2 !== 0) {
+    flag += 1
+    odd = true
+  }
+
+  const bytes = []
+  let currentByte = 0
+  for (let i = 0; i < nibbles.length; i++) {
+    if (odd) {
+      currentByte = (nibbles[i] << 4)
+      odd = false
+    } else {
+      currentByte |= nibbles[i]
+      bytes.push(currentByte)
+      currentByte = 0
+      odd = true
+    }
+  }
+
+  if (odd) {
+    currentByte |= 0x0f
+    bytes.push(currentByte)
+  }
+
+  return Buffer.from(bytes)
+}
+
+// 扩展节点
+class ExtensionNode extends Node {
+  constructor(key, child) {
+    super(NodeType.EXTENSION)
+    this.key = key
+    this.child = child
+  }
+
+  // 将节点转换为 Buffer 类型
+  toBuffer() {
+    const encodedKey = encodeNibbles(this.nibble(this.key, 0))
+    const childBuffer = this.child.toBuffer()
+    const buffers = [Buffer.from([0xc7 + (encodedKey.length - 1)]), encodedKey, childBuffer]
+    return Buffer.concat(buffers)
+  }
+
+  // 获取指定 nibble 对应的子节点
+  getChild(hexKey) {
+    return this.child
+  }
+
+  // 设置指定 nibble 对应的子节点
+  setChild(node, hexKey) {
+    this.child = node
+  }
+
+  // 获取指定 nibble 对应的子节点的 4 位 (nibble) 键值
+  hexKey() {
+    return this.key.substr(2)
+  }
+}
+
+// 分支节点
+class BranchNode extends Node {
+  constructor(key, child) {
+    super(NodeType.BRANCH)
+    this.children = []
+    this.nibbleIndex = key.length
+    this.setChild(new ExtensionNode(key, child), key)
+  }
+
+  // 将节点转换为 Buffer 类型
+  toBuffer() {
+    const buffers = []
+    for (let i = 0; i < 16; i++) {
+      const child = this.children[i]
+      buffers.push(child.toBuffer())
+    }
+    return Buffer.concat(buffers)
+  }
+
+  // 获取指定 nibble 对应的子节点
+  getChild(hexKey) {
+    return this.children[parseInt(hexKey, 16)]
+  }
+
+  // 设置指定 nibble 对应的子节点
+  setChild(node, hexKey) {
+    this.children[parseInt(hexKey, 16)] = node
+  }
+
+  // 获取指定 nibble 对应的子节点的 4 位 (nibble) 键值
+  hexKeyForNibble(nibble) {
+    const index = nibble * 2
+    return this.toNibbleKey(this.key.substr(index, 2))
+  }
+
+  // 转换为 nibble 键
+  toNibbleKey(hexKey) {
+    const nibbles = this.nibble(hexKey, 0)
+    return encodeNibbles(nibbles)
+  }
+  
+}
+
+const mpt = new MPT()
+const rootValue = mpt.setAccount('0x1', 100, 'hello world')
+console.log(rootValue)
+
+const account = mpt.getAccount('0x1')
+console.log(account)
+
+const isValid = mpt.validate(rootValue)
+console.log(isValid)
