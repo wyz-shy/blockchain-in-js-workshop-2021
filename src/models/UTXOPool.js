@@ -1,32 +1,21 @@
-import { ec } from 'elliptic'
-import sha256 from 'crypto-js/sha256.js'
+import UTXO from './UTXO.js'
 
 class UTXOPool {
-  constructor() {
-    this.utxos = {}
-  }
+  constructor(utxos = {}) {}
 
-  update(transaction) {
-    const inputUTXOs = transaction.inputUTXOs()
-    inputUTXOs.forEach((utxo) => {
-      delete this.utxos[utxo.id]
-    })
-    const outputUTXOs = transaction.outputUTXOs()
-    outputUTXOs.forEach((utxo) => {
-      this.utxos[utxo.id] = utxo
-    })
-  }
+  addUTXO(publicKey, amount) {}
 
-  isValidTransaction(senderPublicKey, amount) {
-    let balance = 0
-    for (let id in this.utxos) {
-      const utxo = this.utxos[id]
-      if (utxo.senderPublicKey === senderPublicKey) {
-        balance += utxo.amount
-      }
-    }
-    return balance >= amount
-  }
+  clone() {}
+
+  // 处理交易函数
+  handleTransaction() {}
+
+  // 验证交易合法性
+  /**
+   * 验证余额
+   * 返回 bool
+   */
+  isValidTransaction() {}
 }
 
-export default UTXOPool 
+export default UTXOPool
