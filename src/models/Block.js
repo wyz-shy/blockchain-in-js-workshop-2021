@@ -1,34 +1,45 @@
 import sha256 from 'crypto-js/sha256.js'
+import Transaction from './Transaction.js'
 
-export const DIFFICULTY = 2
+export const DIFFICULTY = 4
 
 class Block {
-  // 1. 完成构造函数及其参数
-
-  constructor() {}
-
-  isValid() {}
-
-  setNonce(nonce) {}
-
-  // 根据交易变化更新区块 hash
-  _setHash() {}
-
-  // 汇总计算交易的 Hash 值
-  /**
-   * 默克尔树实现
-   */
-  combinedTransactionsHash() {
-
+  constructor(blockchain, previousBlockHash, height, merkleRoot, coinbaseBeneficiary) {
+    this.blockchain = blockchain
+    this.previousBlockHash = previousBlockHash
+    this.height = height
+    this.timestamp = new Date().getTime()
+    this.transactions = []
+    this.merkleRoot = merkleRoot
+    this.coinbaseBeneficiary = coinbaseBeneficiary
+    this.nonce = 0
+    this.hash = ''
   }
 
-  // 添加交易到区块
-  /**
-   * 
-   * 需包含 UTXOPool 的更新与 hash 的更新
-   */
-  addTransaction() {}
+  addTransaction(transaction) {
+    this.transactions.push(transaction)
+  }
 
+  mineBlock() {
+    while (this.hash.substring(0, DIFFICULTY) !== Array(DIFFICULTY + 1).join('0')) {
+      this.nonce++
+      this.hash = this.calculateHash()
+    }
+    console.log('Block mined: ' + this.hash)
+  }
+
+  calculateHash() {
+    return sha256(this.previousBlockHash + this.timestamp + JSON.stringify(this.transactions) + this.nonce).toString()
+  }
+
+  hasValidTransactions() {
+    for (let transaction of this.transactions) {
+      if (!transaction.isValid()) {
+        return false
+      }
+    }
+    return true
+  }
 }
 
 export default Block

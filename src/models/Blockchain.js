@@ -1,41 +1,81 @@
-import UTXOPool from './UTXOPool.js'
+import Block, { DIFFICULTY } from './Block.js'
 
-Blockchain
 class Blockchain {
-  // 1. 完成构造函数及其参数
-  /* 构造函数需要包含
-      - 名字
-      - 创世区块
-      - 存储区块的映射
-  */
-  constructor() {}
-
-  // 2. 定义 longestChain 函数
-  /*
-    返回当前链中最长的区块信息列表
-  */
-  longestChain() {
-    return []
+  constructor() {
+    this.chain = [this.createGenesisBlock()]
+    this.difficulty = DIFFICULTY
+    this.pendingTransactions = []
+    this.miningReward = 50
   }
 
-  // 判断当前区块链是否包含
-  containsBlock(block) {
-    // 添加判断方法
-    return false
+  createGenesisBlock() {
+    return new Block(this, '0', 0, '', '')
   }
 
-  // 获得区块高度最高的区块
-  maxHeightBlock() {
-    // return Block
+  getLatestBlock() {
+    return this.chain[this.chain.length - 1]
   }
 
-  // 添加区块
-  /*
+  minePendingTransactions(miningRewardAddress) {
+    let block = new Block(this, this.getLatestBlock().hash, this.getLatestBlock().height + 1, '', miningRewardAddress)
+    block.transactions = [...this.pendingTransactions]
+    block.merkleRoot = block.calculateMerkleRoot()
+    block.mineBlock()
 
-  */
-  _addBlock(block) {
-    if (!block.isValid()) return
-    if (this.containsBlock(block)) return
+    this.chain.push(block)
+
+    this.pendingTransactions = [
+      new Transaction(null, miningRewardAddress, this.miningReward)
+    ]
+  }
+
+  addTransaction(transaction) {
+    if (!transaction.fromAddress || !transaction.toAddress) {
+      throw new Error('Transaction must include from and to address')
+    }
+    if (!transaction.isValid()) {
+      throw new Error('Cannot add invalid transaction to chain')
+    }
+    if (transaction.amount <= 0) {
+      throw new Error('Transaction amount must be greater than 0')
+    }
+    if (this.getBalanceOfAddress(transaction.fromAddress) < transaction.amount) {
+      throw new Error('Not enough balance')
+    }
+    this.pendingTransactions.push(transaction)
+  }
+
+  getBalanceOfAddress(address) {
+    let balance = 0
+    for (let block of this.chain) {
+      for (let transaction of block.transactions) {
+        if (transaction.fromAddress === address) {
+          balance -= transaction.amount
+        }
+        if (transaction.toAddress === address) {
+          balance += transaction.amount
+        }
+      }
+    }
+    return balance
+  }
+
+  isChainValid() {
+    for (let i = 1; i < this.chain.length; i++) {
+      const currentBlock = this.chain[i]
+      const previousBlock = this.chain[i - 1]
+
+      if (!currentBlock.hasValidTransactions()) {
+        return false
+      }
+      if (currentBlock.hash !== currentBlock.calculateHash()) {
+        return false
+      }
+      if (currentBlock.previousBlockHash !== previousBlock.hash) {
+        return false
+      }
+    }
+    return true
   }
 }
 
