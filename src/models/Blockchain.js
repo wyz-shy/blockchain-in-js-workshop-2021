@@ -1,41 +1,59 @@
-import UTXOPool from './UTXOPool.js'
+import Block, { DIFFICULTY } from './Block.js'
 
-Blockchain
 class Blockchain {
-  // 1. 完成构造函数及其参数
-  /* 构造函数需要包含
-      - 名字
-      - 创世区块
-      - 存储区块的映射
-  */
-  constructor() {}
-
-  // 2. 定义 longestChain 函数
-  /*
-    返回当前链中最长的区块信息列表
-  */
-  longestChain() {
-    return []
+  constructor(name) {
+    this.name = name
+    this.chain = []
+    this.genesis = null
+    this.isInterrupted = false
   }
 
-  // 判断当前区块链是否包含
-  containsBlock(block) {
-    // 添加判断方法
-    return false
-  }
-
-  // 获得区块高度最高的区块
-  maxHeightBlock() {
-    // return Block
-  }
-
-  // 添加区块
-  /*
-
-  */
   _addBlock(block) {
-    if (!block.isValid()) return
-    if (this.containsBlock(block)) return
+    this.chain.push(block)
+  }
+
+  addBlock(data, coinbaseBeneficiary) {
+    const newBlock = new Block(
+      this,
+      this.chain[this.chain.length - 1].hash,
+      this.chain.length,
+      data,
+      coinbaseBeneficiary,
+    )
+    newBlock.mine()
+    this._addBlock(newBlock)
+  }
+
+  interrupt() {
+    this.isInterrupted = true
+  }
+
+  longestChain() {
+    if (this.chain.length === 0) {
+      return []
+    }
+    let longestChain = [this.chain[0]]
+    for (let i = 1; i < this.chain.length; i++) {
+      const block = this.chain[i]
+      if (
+        block.previousHash === longestChain[longestChain.length - 1].hash &&
+        block.isValid()
+      ) {
+        longestChain.push(block)
+      } else {
+        break
+      }
+    }
+    return longestChain
+  }
+
+  containsBlock(block) {
+    for (let i = 0; i < this.chain.length; i++) {
+      if (this.chain[i].hash === block.hash) {
+        return true
+      }
+    }
+    return false
   }
 }
 
