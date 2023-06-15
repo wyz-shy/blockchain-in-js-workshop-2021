@@ -1,31 +1,72 @@
 import sha256 from 'crypto-js/sha256.js'
+import Transaction from './Transaction.js'
 
-export const DIFFICULTY = 2
+const DIFFICULTY = 4
 
-class Block {
-  // 1. 完成构造函数及其参数
+export { DIFFICULTY }
 
-  constructor() {}
+export default class Block {
+  constructor(blockchain, prevHash, height, merkleRoot, miner) {
+    this.blockchain = blockchain
+    this.prevHash = prevHash
+    this.height = height
+    this.merkleRoot = merkleRoot
+    this.timestamp = new Date().getTime()
+    this.nonce = 0
+    this.transactions = []
+    this.coinbaseBeneficiary = miner
+    this.hash = this._calculateHash()
+  }
 
-  isValid() {}
+  _calculateHash() {
+    return sha256(
+      this.prevHash +
+        this.height +
+        this.merkleRoot +
+        this.timestamp +
+        this.nonce +
+        JSON.stringify(this.transactions),
+    ).toString()
+  }
 
-  setNonce(nonce) {}
+  addTransaction(transaction) {
+    if (!(transaction instanceof Transaction)) {
+      throw new Error('Invalid transaction')
+    }
+    if (!transaction.isValid()) {
+      throw new Error('Invalid transaction')
+    }
+    this.transactions.push(transaction)
+    this.merkleRoot = this._calculateMerkleRoot()
+    this.hash = this._calculateHash()
+  }
 
-  // 根据交易变化更新区块 hash
-  _setHash() {}
+  _calculateMerkleRoot() {
+    const txHashes = this.transactions.map((tx) => tx.hash)
+    let level = txHashes
+    while (level.length > 1) {
+      level = level.reduce((acc, val, i) => {
+        if (i % 2 == 0) {
+          acc.push(val)
+        } else {
+          acc[acc.length - 1] = sha256(val + acc[acc.length - 1]).toString()
+        }
+        return acc
+      }, [])
+    }
+    return level[0]
+  }
 
-  // 汇总计算交易的 Hash 值
-  /**
-   * 默克尔树实现
-   */
-  combinedTransactionsHash() {}
+  isValid() {
+    return (
+      this.hash.substring(0, DIFFICULTY) === Array(DIFFICULTY + 1).join('0')
+    )
+  }
 
-  // 添加交易到区块
-  /**
-   *
-   * 需包含 UTXOPool 的更新与 hash 的更新
-   */
-  addTransaction() {}
+  mine() {
+    while (!this.isValid()) {
+      this.nonce++
+      this.hash = this._calculateHash()
+    }
+  }
 }
-
-export default Block

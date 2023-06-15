@@ -1,21 +1,57 @@
 import UTXO from './UTXO.js'
 
-class UTXOPool {
-  constructor(utxos = {}) {}
+export default class UTXOPool {
+  constructor() {
+    this.utxos = {}
+  }
 
-  addUTXO(publicKey, amount) {}
+  containsUTXO(utxo) {
+    const key = `${utxo.txHash}:${utxo.outputIndex}`
+    return key in this.utxos
+  }
 
-  clone() {}
+  getUTXO(utxo) {
+    const key = `${utxo.txHash}:${utxo.outputIndex}`
+    return this.utxos[key]
+  }
 
-  // 处理交易函数
-  handleTransaction() {}
+  addUTXO(utxo) {
+    const key = `${utxo.txHash}:${utxo.outputIndex}`
+    this.utxos[key] = utxo
+  }
 
-  // 验证交易合法性
-  /**
-   * 验证余额
-   * 返回 bool
-   */
-  isValidTransaction() {}
+  removeUTXO(utxo) {
+    const key = `${utxo.txHash}:${utxo.outputIndex}`
+    delete this.utxos[key]
+  }
+
+  addTransactionOutputs(transaction) {
+    for (let i = 0; i < transaction.outputs.length; i++) {
+      const { receiver, amount } = transaction.outputs[i]
+      const utxo = new UTXO(transaction.hash, i, amount)
+      this.addUTXO(utxo)
+    }
+  }
+
+  removeTransactionOutputs(transaction) {
+    for (let i = 0; i < transaction.inputs.length; i++) {
+      const utxo = transaction.inputs[i]
+      this.removeUTXO(utxo)
+    }
+  }
+
+  isValidTransaction(transaction) {
+    const inputSum = transaction.inputs.reduce((acc, utxo) => {
+      if (!this.containsUTXO(utxo)) {
+        return Number.MIN_SAFE_INTEGER
+      }
+      const output = this.getUTXO(utxo)
+      return acc + output.amount
+    }, 0)
+    const outputSum = transaction.outputs.reduce(
+      (acc, { amount }) => acc + amount,
+      0,
+    )
+    return inputSum >= outputSum
+  }
 }
-
-export default UTXOPool
